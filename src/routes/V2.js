@@ -6,6 +6,7 @@ const router = express.Router();
 const bearerAuth = require('../middleware/bearer.js');
 const permissions = require('../middleware/acl.js');
 
+// Middleware to handle model parameters
 router.param('model', (req, res, next) => {
   const modelName = req.params.model;
   if (dataModules[modelName]) {
@@ -16,12 +17,13 @@ router.param('model', (req, res, next) => {
   }
 });
 
-// Get all posts with populated reactions and comments
+// Get all posts with populated author, reactions, and comments
 router.get('/posts', bearerAuth, async (req, res) => {
   try {
     const allPosts = await dataModules.Post.find({})
-      .populate({ path: 'reactions.user', select: 'username' })
-      .populate({ path: 'comments.user', select: 'username' })
+      .populate({ path: 'author', select: 'username' }) // Populate author
+      .populate({ path: 'reactions.user', select: 'username' }) // Populate reactions' users
+      .populate({ path: 'comments.user', select: 'username' }) // Populate comments' users
       .exec();
     res.status(200).json(allPosts);
   } catch (error) {
@@ -29,13 +31,14 @@ router.get('/posts', bearerAuth, async (req, res) => {
   }
 });
 
-// Get user's own posts with populated reactions and comments
+// Get user's own posts with populated author, reactions, and comments
 router.get('/posts/user', bearerAuth, async (req, res) => {
   try {
     const userId = req.user._id;
     const userPosts = await dataModules.Post.find({ author: userId })
-      .populate({ path: 'reactions.user', select: 'username' })
-      .populate({ path: 'comments.user', select: 'username' })
+      .populate({ path: 'author', select: 'username' }) // Populate author
+      .populate({ path: 'reactions.user', select: 'username' }) // Populate reactions' users
+      .populate({ path: 'comments.user', select: 'username' }) // Populate comments' users
       .exec();
     res.status(200).json(userPosts);
   } catch (error) {
@@ -53,7 +56,13 @@ router.post('/posts', bearerAuth, permissions('create'), async (req, res) => {
       photos: photos || [], // Ensure photos are optional
       author: req.user._id 
     });
-    res.status(201).json(newPost);
+
+    // Populate author field before sending the response
+    const populatedPost = await dataModules.Post.findById(newPost._id)
+      .populate({ path: 'author', select: 'username' })
+      .exec();
+
+    res.status(201).json(populatedPost);
   } catch (error) {
     res.status(500).json({ message: 'Internal server error' });
   }
@@ -64,7 +73,9 @@ router.put('/posts/:id', bearerAuth, async (req, res) => {
   try {
     const postId = req.params.id;
     const userId = req.user._id;
-    const post = await dataModules.Post.findById(postId);
+    const post = await dataModules.Post.findById(postId)
+      .populate({ path: 'author', select: 'username' }) // Populate author
+      .exec();
 
     if (!post) {
       return res.status(404).json({ message: 'Post not found' });
@@ -72,7 +83,9 @@ router.put('/posts/:id', bearerAuth, async (req, res) => {
 
     // Admin can edit any post
     if (req.user.role === 'admin') {
-      const updatedPost = await dataModules.Post.findByIdAndUpdate(postId, req.body, { new: true });
+      const updatedPost = await dataModules.Post.findByIdAndUpdate(postId, req.body, { new: true })
+        .populate({ path: 'author', select: 'username' })
+        .exec();
       return res.status(200).json(updatedPost);
     }
 
@@ -81,7 +94,9 @@ router.put('/posts/:id', bearerAuth, async (req, res) => {
       return res.status(403).json({ message: 'Unauthorized' });
     }
 
-    const updatedPost = await dataModules.Post.findByIdAndUpdate(postId, req.body, { new: true });
+    const updatedPost = await dataModules.Post.findByIdAndUpdate(postId, req.body, { new: true })
+      .populate({ path: 'author', select: 'username' })
+      .exec();
     res.status(200).json(updatedPost);
   } catch (error) {
     console.error(error);
@@ -123,7 +138,9 @@ router.post('/posts/:id/react', bearerAuth, async (req, res) => {
     const reaction = req.body.reaction; 
     if (!reaction) return res.status(400).json({ message: 'Reaction is required' });
     
-    const post = await dataModules.Post.findById(postId);
+    const post = await dataModules.Post.findById(postId)
+      .populate({ path: 'reactions.user', select: 'username' }) // Populate reactions' users
+      .exec();
     if (!post) return res.status(404).json({ message: 'Post not found' });
 
     const userId = req.user._id;
