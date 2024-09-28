@@ -22,16 +22,21 @@ userSchema.pre('save', async function (next) {
   next();
 });
 
-// Method to authenticate user with basic credentials
-userSchema.statics.authenticateBasic = async function (username, password) {
-  const user = await this.findOne({ username });
+userSchema.statics.authenticateBasic = async function (usernameOrEmail, password) {
+  const user = await this.findOne({
+    $or: [
+      { username: usernameOrEmail },
+      { email: usernameOrEmail }
+    ]
+  });
+  
   if (user && await bcrypt.compare(password, user.password)) {
     return user;
   }
+  
   throw new Error('Invalid User');
 };
 
-// Method to authenticate user with token
 userSchema.statics.authenticateToken = async function (token) {
   try {
     const parsedToken = jwt.verify(token, SECRET);
@@ -43,12 +48,10 @@ userSchema.statics.authenticateToken = async function (token) {
   }
 };
 
-// Virtual field for token
 userSchema.virtual('token').get(function () {
   return jwt.sign({ username: this.username, role: this.role }, SECRET);
 });
 
-// Virtual field for capabilities
 userSchema.virtual('capabilities').get(function () {
   const acl = {
     user: ['read', 'create', 'update', 'delete'],

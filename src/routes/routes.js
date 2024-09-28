@@ -26,15 +26,14 @@ authRouter.post('/signup', async (req, res, next) => {
 });
 
 
-authRouter.post('/signin', async (req, res, next) => {
-  const { usernameOrEmail, password } = req.body;
+authRouter.post('/signin', basicAuth, async (req, res, next) => {
   try {
-    const user = await User.authenticateBasic(usernameOrEmail, password);
+    const user = req.user;
     const output = {
       user: {
         username: user.username,
         email: user.email,
-        role: user.role // Include role here
+        role: user.role 
       },
       token: user.token
     };
