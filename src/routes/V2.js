@@ -20,8 +20,8 @@ router.param('model', (req, res, next) => {
 router.get('/posts', bearerAuth, async (req, res) => {
   try {
     const allPosts = await dataModules.Post.find({})
-      .populate({ path: 'reactions.user', select: 'username' }) // Populate reactions
-      .populate({ path: 'comments.user', select: 'username' }) // Populate comments
+      .populate({ path: 'reactions.user', select: 'username' })
+      .populate({ path: 'comments.user', select: 'username' })
       .exec();
     res.status(200).json(allPosts);
   } catch (error) {
@@ -34,8 +34,8 @@ router.get('/posts/user', bearerAuth, async (req, res) => {
   try {
     const userId = req.user._id;
     const userPosts = await dataModules.Post.find({ author: userId })
-      .populate({ path: 'reactions.user', select: 'username' }) // Populate reactions
-      .populate({ path: 'comments.user', select: 'username' }) // Populate comments
+      .populate({ path: 'reactions.user', select: 'username' })
+      .populate({ path: 'comments.user', select: 'username' })
       .exec();
     res.status(200).json(userPosts);
   } catch (error) {
@@ -46,7 +46,13 @@ router.get('/posts/user', bearerAuth, async (req, res) => {
 // Create a post
 router.post('/posts', bearerAuth, permissions('create'), async (req, res) => {
   try {
-    const newPost = await dataModules.Post.create({ ...req.body, author: req.user._id });
+    const { title, content, photos } = req.body; // Include photos
+    const newPost = await dataModules.Post.create({ 
+      title, 
+      content, 
+      photos: photos || [], // Ensure photos are optional
+      author: req.user._id 
+    });
     res.status(201).json(newPost);
   } catch (error) {
     res.status(500).json({ message: 'Internal server error' });
@@ -121,12 +127,12 @@ router.post('/posts/:id/react', bearerAuth, async (req, res) => {
     if (!post) return res.status(404).json({ message: 'Post not found' });
 
     const userId = req.user._id;
-    const existingReactionIndex = post.reactions.findIndex(r => r.userId.equals(userId));
+    const existingReactionIndex = post.reactions.findIndex(r => r.user.equals(userId));
     
     if (existingReactionIndex > -1) {
       post.reactions[existingReactionIndex].type = reaction;
     } else {
-      post.reactions.push({ userId, type: reaction });
+      post.reactions.push({ user: userId, type: reaction });
     }
 
     await post.save();
@@ -180,6 +186,5 @@ router.delete('/posts/:id/react', bearerAuth, async (req, res) => {
     res.status(500).json({ message: 'Internal server error' });
   }
 });
-
 
 module.exports = router;
