@@ -1,0 +1,11 @@
+{
+  "development": {
+      "uri": "mongodb://localhost:27017/your_database_name"
+  },
+  "test": {
+      "uri": "mongodb://localhost:27017/test_database"
+  },
+  "production": {
+      "uri": "process.env.MONGO_URI"
+  }
+}
