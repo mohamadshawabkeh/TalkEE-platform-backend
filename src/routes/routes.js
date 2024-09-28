@@ -5,13 +5,16 @@ const authRouter = express.Router();
 const { User } = require('../models/index.js');
 const basicAuth = require('../middleware/basic.js');
 const bearerAuth = require('../middleware/bearer.js');
-const permissions = require('../middleware/acl.js');
 
 authRouter.post('/signup', async (req, res, next) => {
   try {
-    let userRecord = await User.create(req.body);
+    const { username, email, password } = req.body;
+    let userRecord = await User.create({ username, email, password });
     const output = {
-      user: userRecord,
+      user: {
+        username: userRecord.username,
+        email: userRecord.email,
+      },
       token: userRecord.token
     };
     res.status(201).json(output);
@@ -20,22 +23,18 @@ authRouter.post('/signup', async (req, res, next) => {
   }
 });
 
-authRouter.post('/signin', basicAuth, (req, res, next) => {
-  const user = {
-    user: req.user,
-    token: req.user.token
-  };
-  res.status(200).json(user);
-});
-
-authRouter.get('/users', bearerAuth, permissions('read'), async (req, res, next) => {
+authRouter.post('/signin', async (req, res, next) => {
+  const { usernameOrEmail, password } = req.body;
   try {
-    const userRecords = await User.find();
-    const list = userRecords.map(user => ({
-      username: user.username,
-      email: user.email
-    }));
-    res.status(200).json(list);
+    const user = await User.authenticateBasic(usernameOrEmail, password);
+    const output = {
+      user: {
+        username: user.username,
+        email: user.email,
+      },
+      token: user.token
+    };
+    res.status(200).json(output);
   } catch (e) {
     next(e);
   }
