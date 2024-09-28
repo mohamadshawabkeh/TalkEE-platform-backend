@@ -17,8 +17,8 @@ const postSchema = new mongoose.Schema({
         comment: { type: String, required: false }, 
         createdAt: { type: Date, default: Date.now } 
       }
-    ]
-  }, { timestamps: true });
-  
-  module.exports = postSchema;
-  
+    ],
+    photos: { type: [String], required: false } 
+}, { timestamps: true });
+
+module.exports = postSchema;
