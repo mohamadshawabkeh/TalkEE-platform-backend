@@ -1,10 +1,12 @@
 'use strict';
 
 const express = require('express');
+const { body, param, validationResult } = require('express-validator');
 const dataModules = require('../models');
 const router = express.Router();
 const bearerAuth = require('../middleware/bearer.js');
 const permissions = require('../middleware/acl.js');
+const { emitNotification } = require('../socket/socket.js');
 
 // Middleware to handle model parameters
 router.param('model', (req, res, next) => {
@@ -21,9 +23,9 @@ router.param('model', (req, res, next) => {
 router.get('/posts', bearerAuth, async (req, res) => {
   try {
     const allPosts = await dataModules.Post.find({})
-      .populate({ path: 'author', select: 'username' }) // Populate author
-      .populate({ path: 'reactions.user', select: 'username' }) // Populate reactions' users
-      .populate({ path: 'comments.user', select: 'username' }) // Populate comments' users
+      .populate({ path: 'author', select: 'username' })
+      .populate({ path: 'reactions.user', select: 'username' })
+      .populate({ path: 'comments.user', select: 'username' })
       .exec();
     res.status(200).json(allPosts);
   } catch (error) {
@@ -31,14 +33,14 @@ router.get('/posts', bearerAuth, async (req, res) => {
   }
 });
 
-// Get user's own posts with populated author, reactions, and comments
+// Get user's own posts
 router.get('/posts/user', bearerAuth, async (req, res) => {
   try {
     const userId = req.user._id;
     const userPosts = await dataModules.Post.find({ author: userId })
-      .populate({ path: 'author', select: 'username' }) // Populate author
-      .populate({ path: 'reactions.user', select: 'username' }) // Populate reactions' users
-      .populate({ path: 'comments.user', select: 'username' }) // Populate comments' users
+      .populate({ path: 'author', select: 'username' })
+      .populate({ path: 'reactions.user', select: 'username' })
+      .populate({ path: 'comments.user', select: 'username' })
       .exec();
     res.status(200).json(userPosts);
   } catch (error) {
@@ -46,18 +48,29 @@ router.get('/posts/user', bearerAuth, async (req, res) => {
   }
 });
 
-// Create a post
-router.post('/posts', bearerAuth, permissions('create'), async (req, res) => {
+// Create a post with validation
+router.post('/posts', bearerAuth, permissions('create'), [
+  body('title').exists().withMessage('Title is required'),
+  body('content').exists().withMessage('Content is required'),
+  body('photos').optional().isArray().withMessage('Photos should be an array')
+], async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ errors: errors.array() });
+  }
+
   try {
-    const { title, content, photos } = req.body; // Include photos
-    const newPost = await dataModules.Post.create({ 
-      title, 
-      content, 
-      photos: photos || [], // Ensure photos are optional
-      author: req.user._id 
+    const { title, content, photos } = req.body;
+    const newPost = await dataModules.Post.create({
+      title,
+      content,
+      photos: photos || [],
+      author: req.user._id
     });
 
-    // Populate author field before sending the response
+    // Emit notification for new post
+    emitNotification('newPost', { postId: newPost._id, userId: req.user._id });
+
     const populatedPost = await dataModules.Post.findById(newPost._id)
       .populate({ path: 'author', select: 'username' })
       .exec();
@@ -68,36 +81,36 @@ router.post('/posts', bearerAuth, permissions('create'), async (req, res) => {
   }
 });
 
-// Update a post
-router.put('/posts/:id', bearerAuth, async (req, res) => {
+// Update a post with validation
+router.put('/posts/:id', bearerAuth, [
+  param('id').exists().withMessage('Post ID is required'),
+  body('title').optional().exists().withMessage('Title must be provided if updating'),
+  body('content').optional().exists().withMessage('Content must be provided if updating'),
+  body('photos').optional().isArray().withMessage('Photos should be an array')
+], async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ errors: errors.array() });
+  }
+
   try {
     const postId = req.params.id;
     const userId = req.user._id;
-    const post = await dataModules.Post.findById(postId)
-      .populate({ path: 'author', select: 'username' }) // Populate author
-      .exec();
+    const post = await dataModules.Post.findById(postId);
 
     if (!post) {
       return res.status(404).json({ message: 'Post not found' });
     }
 
-    // Admin can edit any post
-    if (req.user.role === 'admin') {
+    // Check permissions
+    if (req.user.role === 'admin' || post.author.toString() === userId.toString()) {
       const updatedPost = await dataModules.Post.findByIdAndUpdate(postId, req.body, { new: true })
         .populate({ path: 'author', select: 'username' })
         .exec();
       return res.status(200).json(updatedPost);
     }
 
-    // Users can only edit their own posts
-    if (post.author.toString() !== userId.toString()) {
-      return res.status(403).json({ message: 'Unauthorized' });
-    }
-
-    const updatedPost = await dataModules.Post.findByIdAndUpdate(postId, req.body, { new: true })
-      .populate({ path: 'author', select: 'username' })
-      .exec();
-    res.status(200).json(updatedPost);
+    return res.status(403).json({ message: 'Unauthorized' });
   } catch (error) {
     console.error(error);
     return res.status(500).json({ message: 'Internal server error' });
@@ -113,34 +126,36 @@ router.delete('/posts/:id', bearerAuth, async (req, res) => {
 
     if (!post) return res.status(404).json({ message: 'Post not found' });
 
-    // Admin can delete any post
-    if (req.user.role === 'admin') {
+    // Check permissions
+    if (req.user.role === 'admin' || post.author.toString() === userId.toString()) {
       await dataModules.Post.deleteOne({ _id: postId });
       return res.status(200).json({ message: 'Post deleted successfully.' });
     }
 
-    // Users can only delete their own posts
-    if (post.author.toString() !== userId.toString()) {
-      return res.status(403).json({ message: 'Unauthorized' });
-    }
-
-    await dataModules.Post.deleteOne({ _id: postId });
-    res.status(200).json({ message: 'Post deleted successfully.' });
+    return res.status(403).json({ message: 'Unauthorized' });
   } catch (error) {
     res.status(500).json({ message: 'Internal server error' });
   }
 });
 
 // React to a post
-router.post('/posts/:id/react', bearerAuth, async (req, res) => {
+router.post('/posts/:id/react', bearerAuth, [
+  param('id').exists().withMessage('Post ID is required'),
+  body('reaction').exists().withMessage('Reaction is required')
+], async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ errors: errors.array() });
+  }
+
   try {
     const postId = req.params.id;
-    const reaction = req.body.reaction; 
-    if (!reaction) return res.status(400).json({ message: 'Reaction is required' });
-    
+    const { reaction } = req.body;
+
     const post = await dataModules.Post.findById(postId)
-      .populate({ path: 'reactions.user', select: 'username' }) // Populate reactions' users
+      .populate({ path: 'reactions.user', select: 'username' })
       .exec();
+
     if (!post) return res.status(404).json({ message: 'Post not found' });
 
     const userId = req.user._id;
@@ -153,6 +168,10 @@ router.post('/posts/:id/react', bearerAuth, async (req, res) => {
     }
 
     await post.save();
+
+    // Emit notification for the reaction
+    emitNotification('reaction', { postId, userId, reaction });
+
     res.status(200).json(post);
   } catch (error) {
     res.status(500).json({ message: 'Internal server error' });
