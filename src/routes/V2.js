@@ -169,8 +169,86 @@ router.post('/posts/:id/react', bearerAuth, [
 
     await post.save();
 
-    // Emit notification for the reaction
-    emitNotification('reaction', { postId, userId, reaction });
+    // Re-populate reactions to get the latest usernames
+    const updatedPost = await dataModules.Post.findById(postId)
+      .populate({ path: 'reactions.user', select: 'username' })
+      .exec();
+
+    // Get the username of the reacting user
+    const reactingUser = await dataModules.User.findById(userId).select('username');
+
+    // Emit notification for the reaction with username included
+    emitNotification('reaction', {
+      postId,
+      userId,
+      username: reactingUser.username, // Include the username
+      reaction
+    });
+
+    res.status(200).json(updatedPost);
+  } catch (error) {
+    res.status(500).json({ message: 'Internal server error' });
+  }
+});
+
+// Add a comment to a post
+router.post('/posts/:postId/comments', bearerAuth, [
+  param('postId').exists().withMessage('Post ID is required'),
+  body('content').exists().withMessage('Content is required'),
+  body('photos').optional().isArray().withMessage('Photos should be an array')
+], async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ errors: errors.array() });
+  }
+
+  try {
+    const postId = req.params.postId;
+    const { content, photos } = req.body;
+
+    const newComment = { content, user: req.user._id, photos: photos || [] };
+
+    const post = await dataModules.Post.findById(postId);
+    if (!post) return res.status(404).json({ message: 'Post not found' });
+
+    post.comments.push(newComment);
+    await post.save();
+
+    // Emit notification for the new comment
+    emitNotification('newComment', { postId, userId: req.user._id, content });
+
+    res.status(201).json(post);
+  } catch (error) {
+    res.status(500).json({ message: 'Internal server error' });
+  }
+});
+
+// Edit a comment
+router.put('/posts/:postId/comments/:commentId', bearerAuth, [
+  param('postId').exists().withMessage('Post ID is required'),
+  param('commentId').exists().withMessage('Comment ID is required'),
+  body('content').optional().exists().withMessage('Content must be provided if updating'),
+  body('photos').optional().isArray().withMessage('Photos should be an array')
+], async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ errors: errors.array() });
+  }
+
+  try {
+    const { postId, commentId } = req.params;
+    const post = await dataModules.Post.findById(postId);
+
+    if (!post) return res.status(404).json({ message: 'Post not found' });
+
+    const comment = post.comments.id(commentId);
+    if (!comment) return res.status(404).json({ message: 'Comment not found' });
+
+    // Update the comment
+    comment.content = req.body.content || comment.content;
+    comment.photos = req.body.photos || comment.photos;
+
+    await post.save();
 
     res.status(200).json(post);
   } catch (error) {
