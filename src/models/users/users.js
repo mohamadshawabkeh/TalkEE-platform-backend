@@ -40,7 +40,7 @@ userSchema.statics.authenticateBasic = async function (usernameOrEmail, password
 userSchema.statics.authenticateToken = async function (token) {
   try {
     const parsedToken = jwt.verify(token, SECRET);
-    const user = await this.findOne({ username: parsedToken.username });
+    const user = await this.findById(parsedToken.id); // Use findById for better performance
     if (user) return user;
     throw new Error("User Not Found");
   } catch (e) {
@@ -48,8 +48,9 @@ userSchema.statics.authenticateToken = async function (token) {
   }
 };
 
+
 userSchema.virtual('token').get(function () {
-  return jwt.sign({ username: this.username, role: this.role }, SECRET);
+  return jwt.sign({ id: this._id, username: this.username, role: this.role }, SECRET);
 });
 
 userSchema.virtual('capabilities').get(function () {

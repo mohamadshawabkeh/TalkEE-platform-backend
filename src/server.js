@@ -7,9 +7,13 @@ const express = require('express');
 const cors = require('cors');
 const morgan = require('morgan');
 
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
+
 const notFoundHandler = require('./error-handlers/404.js');
 const errorHandler = require('./error-handlers/500.js');
 const logger = require('./middleware/logger.js');
+const { initSocket } = require('./socket/socket.js');
 
 const authRoutes = require('./routes/routes.js');
 const v2Routes = require('./routes/V2.js');
@@ -17,7 +21,16 @@ const v2Routes = require('./routes/V2.js');
 const app = express();
 const server = http.createServer(app);
 
+app.use(helmet());
 app.use(express.static(path.join(__dirname, 'public')));
+
+
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000, 
+  max: 100, 
+});
+
+app.use(limiter);
 
 app.get('/', (req, res) => {
   res.send('Welcome to the Home Page');
@@ -34,6 +47,9 @@ app.use(morgan('dev'));
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 app.use(logger);
+
+// Initialize Socket.IO
+initSocket(server);
 
 // Routes
 app.use(authRoutes);
