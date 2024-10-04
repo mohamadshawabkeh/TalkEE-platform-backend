@@ -23,6 +23,7 @@ router.param('model', (req, res, next) => {
 router.get('/posts', bearerAuth, async (req, res) => {
   try {
     const allPosts = await dataModules.Post.find({})
+      .sort({ createdAt: -1 })
       .populate({ path: 'author', select: 'username' })
       .populate({ path: 'reactions.user', select: 'username' })
       .populate({ path: 'comments.user', select: 'username' })
