@@ -15,10 +15,11 @@ const postSchema = new mongoose.Schema({
         {
             user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true }, 
             comment: { type: String, required: true },
+            photos: { type: [String], required: false }, 
             createdAt: { type: Date, default: Date.now } 
         }
     ],
     photos: { type: [String], required: false } 
 }, { timestamps: true });
 
-module.exports = postSchema;
+module.exports = mongoose.model('Post', postSchema);

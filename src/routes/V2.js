@@ -195,7 +195,7 @@ router.post('/posts/:id/react', bearerAuth, [
 // Add a comment to a post
 router.post('/posts/:postId/comments', bearerAuth, [
   param('postId').exists().withMessage('Post ID is required'),
-  body('content').exists().withMessage('Content is required'),
+  body('comment').exists().withMessage('Content is required'), // Changed to 'comment'
   body('photos').optional().isArray().withMessage('Photos should be an array')
 ], async (req, res) => {
   const errors = validationResult(req);
@@ -205,9 +205,9 @@ router.post('/posts/:postId/comments', bearerAuth, [
 
   try {
     const postId = req.params.postId;
-    const { content, photos } = req.body;
+    const { comment, photos } = req.body; // Changed to 'comment'
 
-    const newComment = { content, user: req.user._id, photos: photos || [] };
+    const newComment = { comment, user: req.user._id, photos: photos || [] };
 
     const post = await dataModules.Post.findById(postId);
     if (!post) return res.status(404).json({ message: 'Post not found' });
@@ -215,8 +215,11 @@ router.post('/posts/:postId/comments', bearerAuth, [
     post.comments.push(newComment);
     await post.save();
 
+    // Get the username of the commenting user
+    const commentingUser = await dataModules.User.findById(req.user._id).select('username');
+
     // Emit notification for the new comment
-    emitNotification('newComment', { postId, userId: req.user._id, content });
+    emitNotification('newComment', { postId, userId: req.user._id, username: commentingUser.username, comment }); // Added username
 
     res.status(201).json(post);
   } catch (error) {
@@ -228,7 +231,7 @@ router.post('/posts/:postId/comments', bearerAuth, [
 router.put('/posts/:postId/comments/:commentId', bearerAuth, [
   param('postId').exists().withMessage('Post ID is required'),
   param('commentId').exists().withMessage('Comment ID is required'),
-  body('content').optional().exists().withMessage('Content must be provided if updating'),
+  body('comment').optional().exists().withMessage('Content must be provided if updating'),
   body('photos').optional().isArray().withMessage('Photos should be an array')
 ], async (req, res) => {
   const errors = validationResult(req);
@@ -246,7 +249,7 @@ router.put('/posts/:postId/comments/:commentId', bearerAuth, [
     if (!comment) return res.status(404).json({ message: 'Comment not found' });
 
     // Update the comment
-    comment.content = req.body.content || comment.content;
+    comment.comment = req.body.comment || comment.comment; // Changed to 'comment'
     comment.photos = req.body.photos || comment.photos;
 
     await post.save();
