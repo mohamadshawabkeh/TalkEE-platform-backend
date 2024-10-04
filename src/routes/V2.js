@@ -248,8 +248,13 @@ router.put('/posts/:postId/comments/:commentId', bearerAuth, [
     const comment = post.comments.id(commentId);
     if (!comment) return res.status(404).json({ message: 'Comment not found' });
 
+    // Check if the user is the author of the comment or an admin
+    if (comment.user.toString() !== req.user._id.toString() && req.user.role !== 'admin') {
+      return res.status(403).json({ message: 'Unauthorized to edit this comment' });
+    }
+
     // Update the comment
-    comment.comment = req.body.comment || comment.comment; // Changed to 'comment'
+    comment.comment = req.body.comment || comment.comment;
     comment.photos = req.body.photos || comment.photos;
 
     await post.save();
@@ -259,6 +264,7 @@ router.put('/posts/:postId/comments/:commentId', bearerAuth, [
     res.status(500).json({ message: 'Internal server error' });
   }
 });
+
 
 // Delete a comment
 router.delete('/posts/:postId/comments/:commentId', bearerAuth, async (req, res) => {
@@ -270,14 +276,18 @@ router.delete('/posts/:postId/comments/:commentId', bearerAuth, async (req, res)
       return res.status(404).json({ message: 'Post not found' });
     }
 
-    // Check if the comment exists
-    const commentIndex = post.comments.findIndex(c => c._id.toString() === commentId);
-    if (commentIndex === -1) {
+    const comment = post.comments.id(commentId);
+    if (!comment) {
       return res.status(404).json({ message: 'Comment not found' });
     }
 
+    // Check if the user is the author of the comment or an admin
+    if (comment.user.toString() !== req.user._id.toString() && req.user.role !== 'admin') {
+      return res.status(403).json({ message: 'Unauthorized to delete this comment' });
+    }
+
     // Remove the comment
-    post.comments.splice(commentIndex, 1);
+    post.comments.id(commentId).remove();
     await post.save();
 
     res.status(200).json({ message: 'Comment deleted successfully.' });
