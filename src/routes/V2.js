@@ -19,15 +19,34 @@ router.param('model', (req, res, next) => {
   }
 });
 
-// Get all posts with populated author, reactions, and comments
+// Get all posts with images
 router.get('/posts', bearerAuth, async (req, res) => {
   try {
-    const allPosts = await dataModules.Post.find({})
-      .sort({ createdAt: -1 })
-      .populate({ path: 'author', select: 'username' })
+    const { userId, startDate, endDate } = req.query;
+    const filter = {};
+
+    if (userId) {
+      filter.author = userId; 
+    }
+
+    if (startDate || endDate) {
+      filter.createdAt = {};
+      if (startDate) filter.createdAt.$gte = new Date(startDate);
+      if (endDate) filter.createdAt.$lte = new Date(endDate);
+    }
+
+    const allPosts = await dataModules.Post.find(filter)
+      .sort({ pinned: -1, createdAt: -1 })
+      .populate({ path: 'author', select: 'username profileImage' })
       .populate({ path: 'reactions.user', select: 'username' })
-      .populate({ path: 'comments.user', select: 'username' })
+      .populate({ path: 'comments.user', select: 'username profileImage' })
+      .populate({ path: 'photos', select: 'filename contentType data' }) 
       .exec();
+
+    allPosts.forEach(post => {
+      post.comments.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt)); 
+    });
+
     res.status(200).json(allPosts);
   } catch (error) {
     res.status(500).json({ message: 'Internal server error' });
@@ -71,6 +90,14 @@ router.post('/posts', bearerAuth, permissions('create'), [
 
     // Emit notification for new post
     emitNotification('newPost', { postId: newPost._id, userId: req.user._id });
+
+    // Emit user profile image if available
+    if (req.user.profileImage) {
+      emitNotification('userProfileImage', {
+        userId: req.user._id,
+        profileImage: req.user.profileImage
+      });
+    }
 
     const populatedPost = await dataModules.Post.findById(newPost._id)
       .populate({ path: 'author', select: 'username' })
@@ -172,17 +199,15 @@ router.post('/posts/:id/react', bearerAuth, [
 
     // Re-populate reactions to get the latest usernames
     const updatedPost = await dataModules.Post.findById(postId)
-      .populate({ path: 'reactions.user', select: 'username' })
+      .populate({ path: 'reactions.user', select: 'username profileImage' })
       .exec();
+    const reactingUser = await dataModules.User.findById(userId).select('username profileImage');
 
-    // Get the username of the reacting user
-    const reactingUser = await dataModules.User.findById(userId).select('username');
-
-    // Emit notification for the reaction with username included
     emitNotification('reaction', {
       postId,
       userId,
       username: reactingUser.username, // Include the username
+      profileImage: reactingUser.profileImage, // Include the profile image
       reaction
     });
 
@@ -216,10 +241,16 @@ router.post('/posts/:postId/comments', bearerAuth, [
     await post.save();
 
     // Get the username of the commenting user
-    const commentingUser = await dataModules.User.findById(req.user._id).select('username');
+    const commentingUser = await dataModules.User.findById(req.user._id).select('username profileImage');
 
     // Emit notification for the new comment
-    emitNotification('newComment', { postId, userId: req.user._id, username: commentingUser.username, comment }); // Added username
+    emitNotification('newComment', { 
+      postId, 
+      userId: req.user._id, 
+      username: commentingUser.username, // Added username
+      profileImage: commentingUser.profileImage, // Added profile image
+      comment 
+    });
 
     res.status(201).json(post);
   } catch (error) {
@@ -265,7 +296,6 @@ router.put('/posts/:postId/comments/:commentId', bearerAuth, [
   }
 });
 
-
 // Delete a comment
 router.delete('/posts/:postId/comments/:commentId', bearerAuth, async (req, res) => {
   try {
@@ -286,12 +316,13 @@ router.delete('/posts/:postId/comments/:commentId', bearerAuth, async (req, res)
       return res.status(403).json({ message: 'Unauthorized to delete this comment' });
     }
 
-    // Remove the comment
-    post.comments.id(commentId).remove();
+    // Use the correct way to remove the comment
+    post.comments = post.comments.filter(c => c._id.toString() !== commentId);
     await post.save();
 
     res.status(200).json({ message: 'Comment deleted successfully.' });
   } catch (error) {
+    console.error("Error deleting comment:", error);
     res.status(500).json({ message: 'Internal server error' });
   }
 });
@@ -310,6 +341,96 @@ router.delete('/posts/:id/react', bearerAuth, async (req, res) => {
     await post.save();
     
     res.status(200).json({ message: 'Reaction removed successfully.' });
+  } catch (error) {
+    res.status(500).json({ message: 'Internal server error' });
+  }
+});
+
+// Pin a post
+router.post('/posts/:id/pin', bearerAuth, async (req, res) => {
+  try {
+    const postId = req.params.id;
+    const post = await dataModules.Post.findById(postId);
+
+    if (!post) return res.status(404).json({ message: 'Post not found' });
+
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ message: 'Unauthorized' });
+    }
+
+    post.pinned = true;
+    await post.save();
+
+    res.status(200).json({ message: 'Post pinned successfully.' });
+  } catch (error) {
+    res.status(500).json({ message: 'Internal server error' });
+  }
+});
+
+// Unpin a post
+router.post('/posts/:id/unpin', bearerAuth, async (req, res) => {
+  try {
+    const postId = req.params.id;
+    const post = await dataModules.Post.findById(postId);
+
+    if (!post) return res.status(404).json({ message: 'Post not found' });
+
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ message: 'Unauthorized' });
+    }
+
+    post.pinned = false;
+    await post.save();
+
+    res.status(200).json({ message: 'Post unpinned successfully.' });
+  } catch (error) {
+    res.status(500).json({ message: 'Internal server error' });
+  }
+});
+
+// Pin a comment
+router.post('/posts/:postId/comments/:commentId/pin', bearerAuth, async (req, res) => {
+  try {
+    const { postId, commentId } = req.params;
+    const post = await dataModules.Post.findById(postId);
+
+    if (!post) return res.status(404).json({ message: 'Post not found' });
+
+    const comment = post.comments.id(commentId);
+    if (!comment) return res.status(404).json({ message: 'Comment not found' });
+
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ message: 'Unauthorized' });
+    }
+
+    comment.pinned = true;
+    await post.save();
+
+    res.status(200).json({ message: 'Comment pinned successfully.' });
+  } catch (error) {
+    res.status(500).json({ message: 'Internal server error' });
+  }
+});
+
+// Unpin a comment
+router.post('/posts/:postId/comments/:commentId/unpin', bearerAuth, async (req, res) => {
+  try {
+    const { postId, commentId } = req.params;
+    const post = await dataModules.Post.findById(postId);
+
+    if (!post) return res.status(404).json({ message: 'Post not found' });
+
+    const comment = post.comments.id(commentId);
+    if (!comment) return res.status(404).json({ message: 'Comment not found' });
+
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ message: 'Unauthorized' });
+    }
+
+    comment.pinned = false;
+    await post.save();
+
+    res.status(200).json({ message: 'Comment unpinned successfully.' });
   } catch (error) {
     res.status(500).json({ message: 'Internal server error' });
   }

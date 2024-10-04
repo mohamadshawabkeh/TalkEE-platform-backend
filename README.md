@@ -11,12 +11,14 @@ Talkee is a dynamic social platform designed for users to create, share, and int
 - **MongoDB**: A NoSQL database that stores data in a flexible, JSON-like format, allowing for easy data retrieval and management.
 - **Mongoose**: An ODM (Object Data Modeling) library for MongoDB and Node.js that provides a schema-based solution to model application data.
 - **Socket.IO**: A library that enables real-time, bidirectional, and event-based communication between clients and servers.
+- **Helmet**: A middleware for securing Express apps by setting various HTTP headers, protecting against common vulnerabilities.
+- **Express Validator**: A set of middleware for validating and sanitizing user input, ensuring the integrity and security of the data processed by the API.
 
 ## Features
 
 ### API Endpoints
 
-The Talkee platform provides a comprehensive set of RESTful API endpoints for managing posts, comments, and user interactions. Key endpoints include:
+The Talkee platform provides a comprehensive set of RESTful API endpoints for managing posts, comments, user interactions, and images. Key endpoints include:
 
 - **Posts**
   - **GET /api/v2/posts**: Retrieve all posts with their authors, reactions, and comments.
@@ -34,6 +36,10 @@ The Talkee platform provides a comprehensive set of RESTful API endpoints for ma
   - **POST /api/v2/posts/:id/react**: React to a post with a specific type (like, funny, sad, angry).
   - **DELETE /api/v2/posts/:id/react**: Remove a reaction from a post.
 
+- **Images**
+  - **POST /api/v2/images/upload**: Upload an image (supports types: post, profilePicture, comment).
+  - **GET /api/v2/images**: Retrieve images based on type and related ID.
+
 ### Real-Time Notifications
 
 Using **Socket.IO**, the platform supports real-time notifications for user interactions, such as:
@@ -42,7 +48,15 @@ Using **Socket.IO**, the platform supports real-time notifications for user inte
 - Comment notifications.
 - Reaction notifications.
 
-This ensures that users receive immediate feedback on their interactions, enhancing the engagement on the platform.
+This ensures that users receive immediate feedback on their interactions, enhancing engagement on the platform.
+
+### Security Enhancements
+
+To bolster security, Talkee implements several best practices:
+
+- **Helmet**: The app uses Helmet to set various HTTP headers, helping to protect against common web vulnerabilities like cross-site scripting (XSS), clickjacking, and content sniffing. This makes it harder for attackers to exploit potential vulnerabilities in the application.
+
+- **Input Validation**: Using **Express Validator**, the API validates incoming requests to ensure that the data conforms to expected formats. This prevents malformed data from being processed and protects against injection attacks.
 
 ## Authentication & Authorization
 
