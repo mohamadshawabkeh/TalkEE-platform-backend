@@ -17,6 +17,7 @@ const { initSocket } = require('./socket/socket.js');
 
 const authRoutes = require('./routes/routes.js');
 const v2Routes = require('./routes/V2.js');
+const imagesRouter = require('./routes/images.js');
 
 const app = express();
 const server = http.createServer(app);
@@ -54,6 +55,7 @@ initSocket(server);
 // Routes
 app.use(authRoutes);
 app.use('/api/v2', v2Routes);
+app.use('/api/v2/images', imagesRouter);
 
 // Catchalls
 app.use('*', notFoundHandler);

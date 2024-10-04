@@ -13,6 +13,20 @@ const userSchema = new mongoose.Schema({
   password: { type: String, required: true },
   role: { type: String, enum: ['user', 'admin'], default: 'user' },
   createdAt: { type: Date, default: Date.now },
+  bio: { type: String, required: false },
+  profilePicture: { type: mongoose.Schema.Types.ObjectId, ref: 'Image', required: false },
+  address: { type: String, required: false }, 
+  phone: { type: String, required: false },
+  website: { type: String, required: false }, 
+  organization: { type: String, required: false }, 
+  department: { type: String, required: false }, 
+  socialLinks: { 
+    twitter: { type: String, required: false },
+    linkedin: { type: String, required: false },
+    facebook: { type: String, required: false },
+    instagram: { type: String, required: false },
+  },
+
 });
 
 // Middleware to hash the password before saving

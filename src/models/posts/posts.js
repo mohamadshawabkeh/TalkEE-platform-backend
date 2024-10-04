@@ -15,11 +15,13 @@ const postSchema = new mongoose.Schema({
         {
             user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true }, 
             comment: { type: String, required: true },
-            photos: { type: [String], required: false }, // Make sure to add photos here if needed
-            createdAt: { type: Date, default: Date.now } 
+            photos: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Image', required: false }],
+            createdAt: { type: Date, default: Date.now },
+            pinned: { type: Boolean, default: false }
         }
     ],
-    photos: { type: [String], required: false } 
+    photos: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Image', required: false }],
+    pinned: { type: Boolean, default: false }
 }, { timestamps: true });
 
 module.exports = postSchema;
